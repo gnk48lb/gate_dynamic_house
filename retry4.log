@@ -1,0 +1,7 @@
+Retrying 54 infrastructure-failed episodes
+Run full4_20261113: 54 episodes remaining / 720 (0 reused from None); concurrency=4
+Providers: {'workbuddy-ai': 54} -> 3 concurrent each (total 3)
+[1/54] deepseek p=0.2 seed=57 append_only_memory: success=True reason=None cost=54 steps=17 elapsed=54s
+[2/54] deepseek p=0.2 seed=27 ledger_cost_gate: success=True reason=None cost=59 steps=30 elapsed=262s
+[3/54] deepseek p=0.2 seed=5 ledger_cost_gate: success=False reason=infrastructure_failure cost=47 steps=25 elapsed=303s
+[4/54] deepseek p=0.2 seed=59 sliding_window: success=False reason=infrastructure_failure cost=41 steps=28 elapsed=339s

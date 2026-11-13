@@ -1,0 +1,7 @@
+Traceback (most recent call last):
+  File "D:\code\ClaudeCode\gate_dynamic_house\run_benchmark.py", line 348, in <module>
+    main()
+    ~~~~^^
+  File "D:\code\ClaudeCode\gate_dynamic_house\run_benchmark.py", line 210, in main
+    raise RuntimeError("Output manifest differs. Use a new output directory; refusing to mix configurations.")
+RuntimeError: Output manifest differs. Use a new output directory; refusing to mix configurations.

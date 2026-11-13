@@ -1,0 +1,7 @@
+{
+  "deepseek": "workbuddy/deepseek-v4.1-flash",
+  "deepseek_wbai": "workbuddy-ai/deepseek-v4.1-flash-sg",
+  "deepseek_codearts": "codearts/deepseek-v4.1-flash-1017",
+  "glm": "autoclaw-cn/zai_glm-5.3-flash",
+  "minimax": "minimax-code-global/MiniMax-M3.1-Flash"
+}
