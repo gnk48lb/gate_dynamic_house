@@ -161,25 +161,49 @@ def main():
                                  color=palette[method], edgecolor="#fcfcfb", linewidth=1.6, zorder=3)
                     plotted.append({"label": label, "method": method, "x": m["avg_cost"],
                                     "y": m["success_rate"]})
-            # Place labels without collisions: group by rounded y, then stagger
-            # the labels inside each row so near-identical points stay readable.
-            plotted.sort(key=lambda row: (round(row["y"], 1), row["x"]))
-            label_groups: dict[float, list] = {}
+            # Place labels so they never overlap each other or a marker.
+            # Rounding y into rows is not enough: several points can sit at
+            # nearly the same x with slightly different y (e.g. p=0.4), and
+            # row-wise staggering then collides anyway. Work in display
+            # pixels instead and greedily pick the first offset that is free.
+            plotted.sort(key=lambda row: (-row["y"], row["x"]))
+            fontsize = 9
+            placed: list[tuple[float, float, float, float]] = []
+            marker_boxes: list[tuple[float, float, float, float]] = []
             for row in plotted:
-                label_groups.setdefault(round(row["y"], 1), []).append(row)
-            for _, row_list in label_groups.items():
-                for index, row in enumerate(row_list):
-                    row["dx"] = 8
-                    row["dy"] = 7
-                # If labels in this row would overlap horizontally, alternate
-                # them above and below the marker.
-                if len(row_list) > 1:
-                    for index, row in enumerate(row_list):
-                        row["dy"] = 7 if index % 2 == 0 else -14
+                px, py = axis.transData.transform((row["x"], row["y"]))
+                marker_boxes.append((px - 8, py - 8, px + 8, py + 8))
+            for row in plotted:
+                px, py = axis.transData.transform((row["x"], row["y"]))
+                text_w = len(row["label"]) * fontsize * 0.62
+                text_h = fontsize * 1.25
+                chosen = None
+                for dx, dy, ha in (
+                    (9, 6, "left"), (9, -14, "left"), (-9, 6, "right"), (-9, -14, "right"),
+                    (9, 21, "left"), (9, -29, "left"), (-9, 21, "right"), (-9, -29, "right"),
+                    (9, 36, "left"), (-9, 36, "right"), (9, -44, "left"), (-9, -44, "right"),
+                    (9, 51, "left"), (-9, 51, "right"), (9, -59, "left"), (-9, -59, "right"),
+                ):
+                    if ha == "left":
+                        x0, x1 = px + dx, px + dx + text_w
+                    else:
+                        x0, x1 = px + dx - text_w, px + dx
+                    y0, y1 = py + dy - text_h, py + dy
+                    box = (x0, y0, x1, y1)
+                    if any(box[0] < b[2] and b[0] < box[2] and box[1] < b[3] and b[1] < box[3]
+                           for b in placed + marker_boxes):
+                        continue
+                    chosen = (dx, dy, ha, box)
+                    break
+                if chosen is None:
+                    chosen = (9, 6, "left", (px + 9, py + 6 - text_h, px + 9 + text_w, py + 6))
+                dx, dy, ha, box = chosen
+                placed.append(box)
+                row["dx"], row["dy"], row["ha"] = dx, dy, ha
             for row in plotted:
                 axis.annotate(row["label"], (row["x"], row["y"]),
                               xytext=(row["dx"], row["dy"]), textcoords="offset points",
-                              fontsize=9, color=ink_soft, zorder=4)
+                              fontsize=fontsize, color=ink_soft, zorder=4, ha=row["ha"])
             axis.set_xlim(left=0)
             axis.set_ylim(-4, 118)
         axes[0][0].set_ylabel("Task success rate (%)", fontsize=10.5, color=ink_soft)
@@ -330,8 +354,8 @@ def main():
                              "cost_reduction": cost_reduction, "paired_test": test, "passed": passed})
             lines.append(f"- **{label}, p={p}：{'通过' if passed else '未通过'}**。成功率提升 **{delta:+.1f} pp**；相对 always_observe 平均成本降低 **{cost_reduction:.2f}** 点；配对成本差 95% CI [{ci[0]:.2f}, {ci[1]:.2f}]，Wilcoxon p={test['wilcoxon_p']:.4g}，n={test['n']}。")
     pooled_pass = bool(pooled) and all(v["passed"] for v in pooled)
-    lines += ["", "**主闸门结论（p=0.2 与 p=0.4 合并判定均通过）：" +
-              ("通过。**" if pooled_pass else "未通过。**") + "**", "",
+    lines += ["", "**主闸门结论（p=0.2 与 p=0.4 合并判定均通过）："
+              + ("通过。" if pooled_pass else "未通过。") + "**", "",
               "分模型一致性（每个模型在两个动态扰动率均通过）：" +
               ("**通过**。" if verdicts and all(v["passed"] for v in verdicts) else "**未通过（或数据不完整）**。"), "",
               "![成本–成功率帕累托比较](pareto_frontier.png)", "",

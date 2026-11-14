@@ -1,0 +1,6 @@
+Run smoke_v7: 3 episodes remaining / 3 (0 reused from None); concurrency=3
+Providers: {'minimax-code-global': 3} -> 3 concurrent each (total 3)
+[1/3] minimax p=0.2 seed=5 ledger_cost_gate: success=False reason=safety_violation cost=8 steps=5 elapsed=12s
+[2/3] minimax p=0.0 seed=5 ledger_cost_gate: success=True reason=None cost=12 steps=9 elapsed=16s
+[3/3] minimax p=0.4 seed=5 ledger_cost_gate: success=False reason=stale_memory_pick_fail cost=60 steps=23 elapsed=73s
+Completed in 73.3s. Output: D:\code\ClaudeCode\gate_dynamic_house\results_smoke_v7

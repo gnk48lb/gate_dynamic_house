@@ -138,6 +138,45 @@ def provider_of(model: str) -> str:
     return model.split("/")[0] if "/" in model else model
 
 
+def select_repair_candidates(rows: list[dict[str, Any]], done: set[tuple[str, float, int, str]]
+                             ) -> list[dict[str, Any]]:
+    """Episodes to re-run because the PROVIDER failed, not the policy.
+
+    Two rules matter here. The cell key uses the model LABEL (a route may be
+    swapped mid-run while the model it serves stays the same), and the newest
+    row of a cell wins: a repaired episode keeps its old failed row in the log,
+    and re-running that superseded row would retry it forever.
+    """
+    latest: dict[tuple[str, float, int, str], dict[str, Any]] = {}
+    for row in rows:
+        latest[(row["model_label"], row["disturbance_p"], row["seed"], row["method"])] = row
+    return [row for row in latest.values()
+            if row.get("infrastructure_failure")
+            and (row["model_label"], row["disturbance_p"], row["seed"], row["method"]) not in done]
+
+
+def select_reusable_rows(rows: list[dict[str, Any]], models: dict[str, str],
+                         done: set[tuple[str, float, int, str]],
+                         rerun_methods: set[str]) -> list[dict[str, Any]]:
+    """Episodes from an earlier run that count as completed work here.
+
+    A method listed in --rerun-methods is being re-run from scratch: its old
+    rows stay in the source log for the audit trail but must not be counted as
+    finished, or the re-run would silently do nothing.
+    """
+    reusable = []
+    for row in rows:
+        key = (row["model_label"], row["disturbance_p"], row["seed"], row["method"])
+        if key in done or row["model_label"] not in models:
+            continue
+        if row.get("infrastructure_failure"):
+            continue
+        if row["method"] in rerun_methods:
+            continue
+        reusable.append(row)
+    return reusable
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--episodes", type=int, default=80, help="seeds per model x p x method")
@@ -246,15 +285,11 @@ def main() -> None:
     # matrix) can be reused instead of being paid for twice.
     reused = 0
     if args.reuse_from:
-        for row in load_jsonl(args.reuse_from):
-            key = (row["model_label"], row["disturbance_p"], row["seed"], row["method"])
-            if key in done or row["model_label"] not in models:
-                continue
-            if row.get("infrastructure_failure"):
-                continue
-            writers_episode = JsonlWriter(episodes_path)
+        reusable = select_reusable_rows(load_jsonl(args.reuse_from), models, done, rerun_methods)
+        writers_episode = JsonlWriter(episodes_path)
+        for row in reusable:
             writers_episode.write(row)
-            done.add(key)
+            done.add((row["model_label"], row["disturbance_p"], row["seed"], row["method"]))
             reused += 1
     jobs = [(seed, p, method, label, model) for label, model in models.items()
             for p in PS for method in methods for seed in range(args.seed_start, args.seed_start + args.episodes)
@@ -335,9 +370,7 @@ def main() -> None:
     # failure. Re-run those episodes with low concurrency so the comparison is
     # not contaminated by provider flakiness. The retry is recorded in the log.
     if args.repair_infrastructure:
-        failed = [row for row in load_jsonl(episodes_path)
-                  if row.get("infrastructure_failure")
-                  and (row["model"], row["disturbance_p"], row["seed"], row["method"]) not in done]
+        failed = select_repair_candidates(load_jsonl(episodes_path), done)
         if failed:
             print(f"Repair pass: re-running {len(failed)} infrastructure-failed episodes "
                   f"at concurrency {args.repair_concurrency}", flush=True)

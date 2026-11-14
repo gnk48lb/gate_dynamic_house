@@ -52,6 +52,12 @@ class StateLedger:
         the active belief, its age, risk, and how many times it was superseded.
         Sending every historical location re-introduces exactly the stale-state
         confusion the ledger is meant to remove, and costs ~2x the tokens.
+
+        One exception: when the active belief is null the item's location is
+        unknown, and a null with no hint leaves the agent with no way to
+        search. `last_loc` then names the room the item was last seen in, so
+        the agent can search that room instead of wandering at random. It is a
+        search hint about where to look next, not evidence for a pick.
         """
         result = {}
         for item, entry in self.entries.items():
@@ -60,6 +66,10 @@ class StateLedger:
             # in the prompt view.
             row = {"loc": entry["loc"], "memory_age": current_step - entry["last_verified_step"],
                    "risk_level": entry["risk_level"], "superseded_count": len(entry["history"])}
+            if entry["loc"] is None and entry["history"]:
+                last_seen = entry["history"][-1]["loc"]
+                if last_seen is not None:
+                    row["last_loc"] = last_seen
             result[item] = row
         return result
 

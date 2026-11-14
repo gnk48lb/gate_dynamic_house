@@ -394,5 +394,28 @@ class ParserTests(unittest.TestCase):
                 parse_action(text)
 
 
+class LedgerPromptViewTests(unittest.TestCase):
+    """The compact ledger view must still give the agent a place to search."""
+
+    def test_null_loc_carries_the_room_last_seen(self):
+        ledger = StateLedger({"Bedroom": ["notebook"]}, inspection_gap=8)
+        ledger.observe("Bedroom", [], step=3)          # absent -> loc becomes null
+        row = ledger.snapshot(3)["notebook"]
+        self.assertIsNone(row["loc"])
+        self.assertEqual(row["last_loc"], "Bedroom")
+
+    def test_known_loc_carries_no_search_hint(self):
+        ledger = StateLedger({"Bedroom": ["notebook"]}, inspection_gap=8)
+        row = ledger.snapshot(0)["notebook"]
+        self.assertEqual(row["loc"], "Bedroom")
+        self.assertNotIn("last_loc", row)
+
+    def test_absence_after_a_sighting_points_at_the_sighting(self):
+        ledger = StateLedger({"Bedroom": ["notebook"]}, inspection_gap=8)
+        ledger.observe("Bedroom", ["notebook"], step=1)  # seen again in Bedroom
+        ledger.observe("Bedroom", [], step=4)            # then gone
+        self.assertEqual(ledger.snapshot(4)["notebook"]["last_loc"], "Bedroom")
+
+
 if __name__ == "__main__":
     unittest.main()

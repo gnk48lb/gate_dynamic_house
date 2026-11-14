@@ -6,7 +6,7 @@ import unittest
 from agents import LedgerCostGateAgent
 from analyze import paired_cost_test
 from env import DynamicHouseEnv
-from run_benchmark import run_episode
+from run_benchmark import run_episode, select_repair_candidates, select_reusable_rows
 
 
 class FakeClient:
@@ -47,6 +47,58 @@ class BenchmarkTests(unittest.TestCase):
         self.assertLess(result["wilcoxon_p"], 0.05)
         self.assertGreater(result["ci95"][0], 0)
         self.assertEqual(paired_cost_test([0, 0])["wilcoxon_p"], 1.0)
+
+
+class RepairSelectionTests(unittest.TestCase):
+    """The repair pass must not re-run cells that are already finished."""
+
+    def _row(self, label="deepseek", model="workbuddy/deepseek-v4.1-flash", p=0.2, seed=0,
+             method="ledger_cost_gate", infra=False):
+        return {"model_label": label, "model": model, "disturbance_p": p, "seed": seed,
+                "method": method, "infrastructure_failure": infra}
+
+    def test_repair_uses_model_label_and_drops_superseded_failures(self):
+        # The cell key must use the LABEL: the same model on a swapped route
+        # still shares the cell. Once the repaired row lands, the cell's newest
+        # row is no longer an infrastructure failure, so nothing is re-run.
+        failed = self._row(infra=True)
+        repaired = self._row(model="workbuddy-ai/deepseek-v4.1-flash-sg", infra=False)
+        rows = [failed, repaired]
+        self.assertEqual(select_repair_candidates(rows, set()), [])
+        # Without the repair the failed row is still the newest one, and it is
+        # re-run (it is not in `done`).
+        self.assertEqual(len(select_repair_candidates([failed], set())), 1)
+
+    def test_repair_skips_cells_already_in_done(self):
+        row = self._row(infra=True)
+        done = {("deepseek", 0.2, 0, "ledger_cost_gate")}
+        self.assertEqual(select_repair_candidates([row], done), [])
+
+    def test_repair_ignores_label_model_mismatch(self):
+        # A label whose route changed is still the same cell: matching on the
+        # raw model id would re-run an episode that is already accounted for.
+        row = self._row(label="deepseek", model="workbuddy-ai/deepseek-v4.1-flash-sg", infra=True)
+        done = {("deepseek", 0.2, 0, "ledger_cost_gate")}
+        self.assertEqual(select_repair_candidates([row], done), [])
+
+
+class ReuseSelectionTests(unittest.TestCase):
+    """--reuse-from must not resurrect a method that is being re-run."""
+
+    def _row(self, label, method, p=0.2, seed=0, infra=False):
+        return {"model_label": label, "model": "m", "disturbance_p": p, "seed": seed,
+                "method": method, "infrastructure_failure": infra}
+
+    def test_rerun_method_is_not_reused(self):
+        rows = [self._row("minimax", "ledger_cost_gate"), self._row("minimax", "append_only_memory")]
+        kept = select_reusable_rows(rows, {"minimax": "m"}, set(), {"ledger_cost_gate"})
+        self.assertEqual([row["method"] for row in kept], ["append_only_memory"])
+
+    def test_other_models_and_infra_rows_are_not_reused(self):
+        rows = [self._row("deepseek", "append_only_memory"),
+                self._row("minimax", "append_only_memory", infra=True)]
+        kept = select_reusable_rows(rows, {"minimax": "m"}, set(), set())
+        self.assertEqual(kept, [])
 
 
 class BadClient:
